@@ -66,7 +66,7 @@ func (d customRetryer) RetryRules(r *request.Request) time.Duration {
 // NewDNSProvider returns a DNSProvider instance configured for the AWS
 // Route 53 service using static credentials from its parameters or, if they're
 // unset and the 'ambient' option is set, credentials from the environment.
-func NewDNSProvider(accessKeyID, secretAccessKey, hostedZoneID, region string, ambient bool, dns01Nameservers []string) (*DNSProvider, error) {
+func NewDNSProvider(accessKeyID, secretAccessKey, hostedZoneID, region string, endpoint string, ambient bool, dns01Nameservers []string) (*DNSProvider, error) {
 	if accessKeyID == "" && secretAccessKey == "" {
 		if !ambient {
 			return nil, fmt.Errorf("unable to construct route53 provider: empty credentials; perhaps you meant to enable ambient credentials?")
@@ -83,6 +83,8 @@ func NewDNSProvider(accessKeyID, secretAccessKey, hostedZoneID, region string, a
 	config := request.WithRetryer(aws.NewConfig(), r)
 	sessionOpts := session.Options{}
 
+	additionalConfig := aws.NewConfig()
+
 	if useAmbientCredentials {
 		klog.V(5).Infof("using ambient credentials")
 		// Leaving credentials unset results in a default credential chain being
@@ -98,14 +100,32 @@ func NewDNSProvider(accessKeyID, secretAccessKey, hostedZoneID, region string, a
 	// If ambient credentials aren't permitted, always set the region, even if to
 	// empty string, to avoid it falling back on the environment.
 	if region != "" || !useAmbientCredentials {
+		klog.V(5).Infof("Using region:")
+		klog.V(5).Infof(region)
 		config.WithRegion(region)
 	}
+
+	if endpoint != "" {
+		klog.V(5).Infof("Using alternate endpoint:")
+		klog.V(5).Infof(endpoint)
+		config.WithEndpoint(endpoint)
+
+		sessionOpts.SharedConfigState = session.SharedConfigEnable
+		sessionOpts.Config = aws.Config{Region: aws.String(region)}
+
+		additionalConfig.WithEndpoint(endpoint)
+		additionalConfig.WithRegion(region)
+	}
+
 	sess, err := session.NewSessionWithOptions(sessionOpts)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create aws session: %s", err)
 	}
 	sess.Handlers.Build.PushBack(request.WithAppendUserAgent(pkgutil.CertManagerUserAgent))
-	client := route53.New(sess, config)
+
+	client := route53.New(sess, additionalConfig)
+
+	// klog.V(5).Infof(client)
 
 	return &DNSProvider{
 		client:           client,

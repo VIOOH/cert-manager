@@ -486,6 +486,9 @@ type ACMEIssuerDNS01ProviderRoute53 struct {
 	// +optional
 	HostedZoneID string `json:"hostedZoneID,omitempty"`
 
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
+
 	Region string `json:"region"`
 }
 
